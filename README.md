@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# jardicup — site et configurateur 3D
 
-## Getting Started
+Site vitrine et de réservation de la tour potagère jardicup : configurateur 3D (Three.js) qui adapte la tour au garde-corps du visiteur, et formulaire de réservation sans paiement (les prix ne sont pas encore publiés).
 
-First, run the development server:
+## Stack
+
+- Next.js 16 (App Router), React 19, Tailwind CSS 4
+- Three.js pour la scène du balcon (`src/components/configurator/scene.ts`)
+- Supabase (table `reservations`, insertion seule depuis le site via la clé publishable, lecture réservée au dashboard)
+- Hébergement prévu sur Vercel
+
+## Lancer en local
 
 ```bash
+npm install
+cp .env.example .env.local   # puis renseigner les deux variables
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Variables d'environnement :
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Clé | Valeur |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | URL du projet Supabase `jardicup` |
+| `NEXT_PUBLIC_SUPABASE_KEY` | clé **publishable** (jamais la clé service) |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Organisation
 
-## Learn More
+```
+src/lib/config.ts            modèle du configurateur : état, catalogue, calculs, récap
+src/lib/supabase.ts          client public + génération de référence
+src/components/configurator  scène 3D, panneau 3 étapes, vue, contexte React
+src/components/site          en-tête, pied, accueil (hero 3D), lecteur vidéo
+src/app                      pages : / , /configurateur, /reservation, /merci, /mentions-legales
+public/media                 vidéos (rendus Blender) compressées + posters
+src/fonts                    Gabarito et Hanken Grotesk, auto-hébergées
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Réservations
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Chaque réservation enregistre la configuration complète (JSON), un résumé lisible, les coordonnées et un statut (`nouvelle`, `contactee`, `confirmee`, `annulee`). Consultation et suivi depuis le dashboard Supabase → Table editor → `reservations`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Pour exporter : Supabase → SQL → `select reference, created_at, prenom, nom, email, resume from reservations order by created_at desc;`
 
-## Deploy on Vercel
+## Ouvrir les ventes plus tard
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Ajouter les prix dans `VERSIONS` (`src/lib/config.ts`) et les afficher dans la gamme et le récap.
+2. Remplacer le bouton « Réserver » par un paiement (Stripe Checkout) dans une route serveur.
+3. Compléter les mentions légales (`src/app/mentions-legales/page.tsx`) et l'adresse de contact dans le pied de page.

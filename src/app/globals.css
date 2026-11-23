@@ -1,26 +1,159 @@
 @import "tailwindcss";
 
+/* ------------------------------------------------------------------
+   jardicup — monde visuel : le balcon parisien.
+   Pierre de taille (fond), ferronnerie (encre et filets verticaux),
+   sable de la tour (champs de couleur), feuille (action).
+------------------------------------------------------------------- */
+@theme {
+  --color-stone: #e7e3da;
+  --color-stone-2: #dcd6c9;
+  --color-stone-3: #cfc8b8;
+  --color-paper: #f4f1ea;
+  --color-iron: #1e2321;
+  --color-iron-2: #3a413d;
+  --color-iron-3: #6b736e;
+  --color-sand: #d9b48f;
+  --color-sand-2: #ebd7bf;
+  --color-sand-3: #b98e62;
+  --color-leaf: #2e7d3a;
+  --color-leaf-2: #1f5a2c;
+  --color-leaf-3: #8fcf8a;
+  --color-slate: #5c5e5c;
+  --color-signal: #c0392b;
+  --color-amber: #a86b12;
+
+  --font-display: var(--font-gabarito), "Avenir Next", system-ui, sans-serif;
+  --font-sans: var(--font-hanken), system-ui, sans-serif;
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+
+  --shadow-lift: 0 1px 2px rgb(30 35 33 / 0.06), 0 8px 24px -8px rgb(30 35 33 / 0.28);
+  --shadow-float: 0 2px 4px rgb(30 35 33 / 0.08), 0 18px 40px -12px rgb(30 35 33 / 0.35);
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --scene-bg: #e3dfd5;
+  --cote: #1e2321;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  @apply bg-stone text-iron font-sans antialiased;
+  font-size: 1.0625rem;
+  line-height: 1.5;
+  font-feature-settings: "ss01", "cv05";
 }
+
+/* Surfaces navigateur : sélection, caret, focus, scrollbar, numéraux. */
+::selection { background: var(--color-sand); color: var(--color-iron); }
+input, textarea { caret-color: var(--color-leaf); }
+:focus-visible { outline: 2px solid var(--color-leaf); outline-offset: 3px; border-radius: 2px; }
+* { scrollbar-color: var(--color-stone-3) transparent; scrollbar-width: thin; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--color-stone-3); border: 3px solid var(--color-stone); border-radius: 8px; }
+a { text-underline-offset: 0.18em; text-decoration-thickness: 1px; }
+@utility tnum { font-variant-numeric: tabular-nums; }
+
+h1, h2, h3, .display {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  line-height: 1.02;
+}
+p { text-wrap: pretty; }
+
+/* Filets de ferronnerie : motif de barreaux verticaux utilisé comme séparateur. */
+.rail-rule {
+  height: 28px;
+  background-image: repeating-linear-gradient(90deg, var(--color-iron) 0 2px, transparent 2px 14px);
+  background-size: 14px 100%;
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+.rail-rule.light {
+  background-image: repeating-linear-gradient(90deg, var(--color-stone) 0 2px, transparent 2px 14px);
+}
+
+/* Boutons */
+.btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-md px-5 py-3 font-semibold text-[0.95rem] leading-none select-none;
+  transition: transform 140ms var(--ease-out), background-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+.btn:active { transform: scale(0.97); }
+.btn-primary { @apply bg-leaf text-paper; box-shadow: inset 0 -1px 0 rgb(0 0 0 / 0.18); }
+.btn-primary:hover { @apply bg-leaf-2; }
+.btn-ghost { @apply bg-transparent text-iron border border-iron/25; }
+.btn-ghost:hover { @apply border-iron; }
+.btn-paper { @apply bg-paper text-iron; box-shadow: var(--shadow-lift); }
+.btn-paper:hover { @apply bg-white; }
+.btn[disabled], .btn[aria-disabled="true"] { opacity: 0.55; pointer-events: none; }
+
+/* Champs */
+.field-label { @apply block text-[0.8rem] font-semibold text-iron-2 mb-1.5; }
+.input {
+  @apply w-full rounded-md bg-paper border border-stone-3 px-3.5 py-2.5 text-iron placeholder:text-iron-3/80;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+.input:focus { outline: none; border-color: var(--color-leaf); box-shadow: 0 0 0 3px rgb(46 125 58 / 0.18); }
+.input[aria-invalid="true"] { border-color: var(--color-signal); }
+.input-error { @apply text-signal text-[0.82rem] mt-1.5; }
+
+/* Segments (choix exclusifs) */
+.seg { @apply flex flex-wrap gap-1.5; }
+.seg > button {
+  @apply rounded-md border border-stone-3 bg-paper px-3 py-2 text-[0.9rem] font-medium text-iron min-w-11;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms var(--ease-out);
+}
+.seg > button:hover { border-color: var(--color-iron-3); }
+.seg > button:active { transform: scale(0.97); }
+.seg > button[aria-pressed="true"] { @apply bg-iron border-iron text-paper; }
+
+/* Curseur */
+input[type="range"] {
+  @apply w-full h-5 bg-transparent appearance-none cursor-pointer;
+}
+input[type="range"]::-webkit-slider-runnable-track { height: 3px; border-radius: 2px; background: var(--color-stone-3); }
+input[type="range"]::-moz-range-track { height: 3px; border-radius: 2px; background: var(--color-stone-3); }
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 18px; height: 18px; margin-top: -7.5px; border-radius: 50%;
+  background: var(--color-leaf); border: 3px solid var(--color-paper); box-shadow: var(--shadow-lift);
+  transition: transform 120ms var(--ease-out);
+}
+input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--color-leaf); border: 3px solid var(--color-paper); box-shadow: var(--shadow-lift); }
+input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.15); }
+
+/* Étiquettes de cotes sur la vue 3D */
+.cote {
+  @apply absolute left-0 top-0 whitespace-nowrap rounded-full border border-iron bg-paper px-2.5 py-1.5 text-[0.72rem] font-semibold leading-none text-iron;
+  font-variant-numeric: tabular-nums;
+  pointer-events: auto; will-change: transform; transform: translate(-50%, -50%);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+button.cote:hover { background: var(--color-iron); color: var(--color-paper); }
+.cote.ro { border-style: dashed; cursor: default; }
+.cote.north { @apply grid size-6 place-items-center rounded-full border-iron bg-iron p-0 text-paper; }
+
+/* Vidéo : cadre vertical aux proportions des rendus */
+.video-frame { aspect-ratio: 9 / 16; }
+.video-frame video, .video-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Apparition unique au chargement de la page (pas répétée par section) */
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.rise { animation: rise 600ms var(--ease-out) both; }
+.rise-2 { animation-delay: 90ms; }
+.rise-3 { animation-delay: 180ms; }
+
+details > summary { list-style: none; }
+details > summary::-webkit-details-marker { display: none; }
