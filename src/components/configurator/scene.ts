@@ -4,9 +4,10 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import {
-  BASE_DEPTH, BASE_H, BASE_W, CAP_H, COLORS, Config, FEET, ORIENTS, PlantType, SUN_AZ, TIER_H, TIER_W,
+  BASE_DEPTH, BASE_H, BASE_W, CAP_H, COLORS, Config, ORIENTS, PlantType, SUN_AZ, TIER0_Y, TIER_H, TIER_W,
   cm, fmt, layout, railThickness, railTopY, towerH, towerXs,
 } from "@/lib/config";
+import { CUPS, TowerParts, instance, loadTowerParts } from "./towerModel";
 
 const DEG = Math.PI / 180;
 
@@ -65,6 +66,7 @@ export class BalconyScene {
   private v = new THREE.Vector3();
   private labelBuf = new Float32Array(0);
   private disposed = false;
+  private parts: TowerParts | null = null;
 
   constructor(private container: HTMLElement, initial: Config, private opts: SceneOptions) {
     this.config = initial;
@@ -102,6 +104,8 @@ export class BalconyScene {
     this.build();
     this.setCam(opts.initialCam ?? "iso", true);
     this.loop();
+    // vrai modèle de la tour : chargé en arrière-plan, la scène est reconstruite à l'arrivée
+    loadTowerParts().then((p) => { if (!this.disposed) { this.parts = p; this.build(); } }).catch(() => { /* on garde le rendu procédural */ });
   }
 
   /* ---------- API ---------- */
@@ -320,26 +324,49 @@ export class BalconyScene {
     const S = this.config, MAT = this.MAT, box = this.box;
     const g = new THREE.Group(); g.position.set(x, 0, zBack);
     const tm = this.towerMats[S.color]!, n = S.tiers, th = towerH(n), r = rng(idx * 97 + n * 13 + 3);
-    for (const fx of [-0.12, 0.12]) for (const fz of [-0.02, -0.18]) g.add(this.mesh(new THREE.CylinderGeometry(0.015, 0.018, FEET, 10), MAT.clamp, fx, FEET / 2, fz));
-    g.add(this.mesh(this.dGeo(BASE_W, BASE_DEPTH - BASE_W / 2, BASE_H - 0.008), tm, 0, FEET + 0.004, 0));
-    for (let i = 0; i < n; i++) g.add(this.mesh(this.dGeo(TIER_W, 0.03, TIER_H - 0.012), tm, 0, FEET + BASE_H + i * TIER_H + 0.006, 0));
-    g.add(this.mesh(this.dGeo(TIER_W, 0.03, CAP_H - 0.012), tm, 0, FEET + BASE_H + n * TIER_H + 0.006, 0));
-    const up = new THREE.Vector3(0, 1, 0), tilt = 35 * DEG, R = TIER_W / 2;
-    const angles = [-52 * DEG, 0, 52 * DEG];
-    lay.forEach((tier, i) => {
-      const y = FEET + BASE_H + i * TIER_H + TIER_H * 0.5;
-      angles.forEach((a, j) => {
-        const nv = new THREE.Vector3(Math.sin(a), 0, -Math.cos(a));
-        const surf = new THREE.Vector3(R * Math.sin(a), y, -0.03 - R * Math.cos(a));
-        const axis = nv.clone().multiplyScalar(Math.cos(tilt)).add(up.clone().multiplyScalar(Math.sin(tilt))).normalize();
-        const pot = this.mesh(this.GEO.pot, MAT.pot);
-        pot.position.copy(surf).addScaledVector(nv, 0.006); pot.quaternion.setFromUnitVectors(up, axis); g.add(pot);
-        if (tier[j]) {
-          const p = this.plant(tier[j], r, i + j);
-          p.position.copy(surf).addScaledVector(nv, 0.022).addScaledVector(up, 0.022); p.rotation.y = r() * Math.PI; g.add(p);
-        }
+    const up = new THREE.Vector3(0, 1, 0);
+    if (this.parts) {
+      /* ----- modules réels (export Fusion) ----- */
+      const mats = { body: tm, steel: MAT.panelFrame, panel: MAT.panel };
+      g.add(instance(this.parts.base, mats));
+      for (let i = 0; i < n; i++) {
+        const tier = instance(i % 2 === 0 ? this.parts.tier4 : this.parts.tier3, mats);
+        tier.position.y = TIER0_Y + i * TIER_H;
+        g.add(tier);
+      }
+      const cap = instance(this.parts.cap, mats); cap.position.y = TIER0_Y + n * TIER_H; g.add(cap);
+      if (S.version === "premium") { const panel = instance(this.parts.panel, mats); panel.position.y = TIER0_Y + n * TIER_H; g.add(panel); }
+      lay.forEach((tier, i) => {
+        const cups = CUPS[i % 2 === 0 ? "tier4" : "tier3"], y0 = TIER0_Y + i * TIER_H;
+        tier.forEach((pl, j) => {
+          if (!pl || !cups[j]) return;
+          const c = cups[j];
+          const p = this.plant(pl, r, i + j);
+          p.position.copy(c.pos).addScaledVector(c.dir, 0.014).add(new THREE.Vector3(0, y0 + 0.01, 0));
+          if (pl === "herb") p.scale.setScalar(1.35);
+          p.rotation.y = r() * Math.PI;
+          g.add(p);
+        });
       });
-    });
+    } else {
+      /* ----- repli procédural, le temps du chargement ----- */
+      g.add(this.mesh(this.dGeo(BASE_W, BASE_DEPTH - BASE_W / 2, BASE_H - 0.008), tm, 0, 0.004, 0));
+      for (let i = 0; i < n; i++) g.add(this.mesh(this.dGeo(TIER_W, 0.03, TIER_H - 0.012), tm, 0, TIER0_Y + i * TIER_H + 0.006, 0));
+      g.add(this.mesh(this.dGeo(TIER_W, 0.03, CAP_H - 0.012), tm, 0, TIER0_Y + n * TIER_H + 0.006, 0));
+      const tilt = 35 * DEG, R = TIER_W / 2;
+      lay.forEach((tier, i) => {
+        const y = TIER0_Y + i * TIER_H + TIER_H * 0.5;
+        const cups = CUPS[i % 2 === 0 ? "tier4" : "tier3"];
+        tier.forEach((pl, j) => {
+          const c = cups[j]; if (!c) return;
+          const nv = new THREE.Vector3(c.dir.x, 0, c.dir.z).normalize();
+          const surf = new THREE.Vector3(R * nv.x, y, -0.03 + R * nv.z);
+          const axis = nv.clone().multiplyScalar(Math.cos(tilt)).add(up.clone().multiplyScalar(Math.sin(tilt))).normalize();
+          const pot = this.mesh(this.GEO.pot, MAT.pot); pot.position.copy(surf).addScaledVector(nv, 0.006); pot.quaternion.setFromUnitVectors(up, axis); g.add(pot);
+          if (pl) { const p = this.plant(pl, r, i + j); p.position.copy(surf).addScaledVector(nv, 0.022).addScaledVector(up, 0.022); p.rotation.y = r() * Math.PI; g.add(p); }
+        });
+      });
+    }
     // attaches (repère local : dos de la tour à z=0, garde-corps vers +z)
     const t = railThickness(S), gap = 0.025, zr = gap + t / 2, zo = gap + t, top = Math.min(th, S.H);
     if (S.rail === "barreaux") {
@@ -375,8 +402,8 @@ export class BalconyScene {
     g.add(this.segment(new THREE.Vector3(0.075, th - 0.06, 0.004), new THREE.Vector3(0.075, ry + 0.01, zr), 0.02, 0.004, MAT.strap));
     const loop = this.mesh(new THREE.TorusGeometry(Math.max(0.03, (S.rail === "muret" ? S.lisseD : t) / 2 + 0.012), 0.004, 6, 24), MAT.strap, 0.075, ry - 0.005, zr);
     loop.rotation.y = Math.PI / 2; g.add(loop);
-    // panneau solaire
-    if (S.version === "premium") {
+    // panneau solaire (version procédurale seulement)
+    if (S.version === "premium" && !this.parts) {
       const py = S.H + 0.15;
       g.add(this.mesh(box(0.025, py - S.H + 0.02, 0.025), MAT.panelFrame, 0, S.H + (py - S.H) / 2, zr));
       const pg = new THREE.Group(); pg.position.set(0, py, zr + 0.02); pg.rotation.x = 35 * DEG;
@@ -482,7 +509,7 @@ export class BalconyScene {
       case "inside": return { p: new THREE.Vector3(this.doorX, 1.55, 0.12), t: new THREE.Vector3(tx * 0.6, 0.75, D) };
       case "street": return { p: new THREE.Vector3(tx * 0.4, 1.25, D + s * 1.15), t: new THREE.Vector3(tx * 0.4, 0.7, D - 0.2) };
       case "top": return { p: new THREE.Vector3(0, s * 1.55, D / 2 + 0.01), t: new THREE.Vector3(0, 0, D / 2) };
-      case "hero": return { p: new THREE.Vector3(tx + 1.6, 1.5, D + 1.9), t: new THREE.Vector3(tx + 0.1, 0.62, D - 0.2) };
+      case "hero": return { p: new THREE.Vector3(tx + 1.25, 1.45, D - 1.55), t: new THREE.Vector3(tx + 0.05, 0.6, D - 0.15) };
       default: return { p: new THREE.Vector3(tx + s * 0.55, s * 0.38 + 0.9, D + s * 0.85), t: new THREE.Vector3(tx, 0.55, D * 0.55) };
     }
   }

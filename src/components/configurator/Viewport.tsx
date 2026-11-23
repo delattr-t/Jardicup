@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BalconyScene, CamName, Cote, CoteKey } from "./scene";
 import { useConfig } from "./ConfigContext";
-import { FEET, BASE_H, CAP_H, TIER_H, FIELD_BY_KEY, NumKey, clamp, towerH, towerXs } from "@/lib/config";
+import { TIER0_Y, CAP_H, TIER_H, FIELD_BY_KEY, NumKey, clamp, towerH, towerXs } from "@/lib/config";
 
 const CAMS: { k: CamName; label: string }[] = [
   { k: "iso", label: "3/4" },
@@ -83,7 +83,7 @@ export default function Viewport({ className = "", compact = false, cotesDefault
     const S = configRef.current;
     if (!isFinite(v)) { setEditor(null); return; }
     if (editor.key === "towerH") {
-      const n = Math.round((v / 100 - (FEET + BASE_H + CAP_H)) / TIER_H);
+      const n = Math.round((v / 100 - (TIER0_Y + CAP_H)) / TIER_H);
       patch({ tiers: clamp(n, 3, 12) });
     } else if (editor.key === "pos") {
       const { margin, avail } = towerXs(S);

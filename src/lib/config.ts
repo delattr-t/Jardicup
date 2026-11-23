@@ -63,16 +63,21 @@ export const DEFAULT_CONFIG: Config = {
   pollin: true,
 };
 
-/* ---------- Géométrie produit (prototype) ---------- */
-export const FEET = 0.02,
-  BASE_H = 0.25,
-  TIER_H = 0.13,
-  CAP_H = 0.04;
-export const BASE_W = 0.32,
-  BASE_DEPTH = 0.22,
-  TIER_W = 0.18;
+/* ---------- Géométrie produit (assemblage Fusion v14, mètres) ---------- */
+export const FEET = 0,
+  BASE_H = 0.251, // réservoir + capuchon
+  TIER_H = 0.132, // pas d'empilement des étages
+  CAP_H = 0.093; // chute + toit
+export const BASE_W = 0.34, // réservoir + boîte batterie
+  BASE_DEPTH = 0.25,
+  TIER_W = 0.28;
+/** bas du premier étage : il s'emboîte 2 cm dans le capuchon du réservoir */
+export const TIER0_Y = 0.231;
 export const TOWER_SPACING = 0.42;
-export const towerH = (n: number) => FEET + BASE_H + n * TIER_H + CAP_H;
+export const towerH = (n: number) => TIER0_Y + n * TIER_H + CAP_H;
+/** étages pairs (« 4 trous ») : façade + deux côtés ; étages impairs (« 3 trous ») : deux côtés */
+export const sitesPerTier = (i: number) => (i % 2 === 0 ? 3 : 2);
+export const totalSites = (n: number) => Array.from({ length: n }, (_, i) => sitesPerTier(i)).reduce((a, b) => a + b, 0);
 
 /* ---------- Catalogue ---------- */
 export const RAILS: Record<RailKind, { name: string; short: string; att: string }> = {
@@ -104,10 +109,10 @@ export const COLORS: Record<ColorKey, { hex: number; css: string; name: string; 
 export const COLOR_KEYS = Object.keys(COLORS) as ColorKey[];
 
 export const CROPS: Record<Crop, { name: string; hint: string; k: number }> = {
-  mix: { name: "Mélange", hint: "Aromatiques sur les étages hauts, les plus éclairés ; salades en alternance plus bas.", k: 0.14 },
-  aromates: { name: "Aromatiques", hint: "Trois plants par étage : basilic, persil, ciboulette, thym.", k: 0.11 },
-  salades: { name: "Salades", hint: "Deux plants puis un, en alternance, pour que les têtes ne se touchent pas.", k: 0.17 },
-  fraisiers: { name: "Fraisiers", hint: "Un site sur deux, pour laisser pendre les fruits.", k: 0.2 },
+  mix: { name: "Mélange", hint: "Aromatiques sur les étages hauts, les plus éclairés ; salades plus bas.", k: 0.14 },
+  aromates: { name: "Aromatiques", hint: "Un plant par logement : basilic, persil, ciboulette, thym.", k: 0.11 },
+  salades: { name: "Salades", hint: "Les logements de façade restent libres un étage sur deux, pour que les têtes ne se touchent pas.", k: 0.17 },
+  fraisiers: { name: "Fraisiers", hint: "Sur les côtés seulement, pour laisser pendre les fruits.", k: 0.2 },
 };
 export const CROP_KEYS = Object.keys(CROPS) as Crop[];
 
@@ -180,7 +185,7 @@ export function maxCount(c: Config) {
   return clamp(Math.floor((c.W - 0.12) / TOWER_SPACING), 1, 4);
 }
 export function fitTiers(c: Config) {
-  return clamp(Math.ceil((c.H + 0.05 - (FEET + BASE_H + CAP_H)) / TIER_H), 3, 12);
+  return clamp(Math.ceil((c.H + 0.05 - (TIER0_Y + CAP_H)) / TIER_H), 3, 12);
 }
 export function normalize(c: Config): Config {
   return {
@@ -230,26 +235,24 @@ export function towerXs(c: Config) {
 }
 
 export type PlantType = "salad" | "herb" | "straw" | "flower" | null;
+/* Un tableau par étage, un élément par logement : [façade, droite, gauche] sur les étages
+   pairs, [droite, gauche] sur les étages impairs. */
 export function layout(c: Config): PlantType[][] {
   const n = c.tiers,
     out: PlantType[][] = [];
   for (let i = 0; i < n; i++) {
-    const fromTop = n - 1 - i;
+    const fromTop = n - 1 - i, k = sitesPerTier(i);
+    const fill = (p: PlantType): PlantType[] => Array.from({ length: k }, () => p);
     let t: PlantType[];
-    const alt: PlantType[] = i % 2 === 0 ? ["salad", null, "salad"] : [null, "salad", null];
-    if (c.crop === "aromates") t = ["herb", "herb", "herb"];
-    else if (c.crop === "salades") t = alt;
-    else if (c.crop === "fraisiers") t = i % 2 === 0 ? ["straw", null, "straw"] : [null, "straw", null];
-    else t = fromTop < Math.ceil(n / 2) ? ["herb", "herb", "herb"] : alt;
-    if (c.pollin && fromTop % 3 === 1) {
-      const idx = t[1] !== null ? 1 : 0;
-      t[idx] = "flower";
-    }
+    if (c.crop === "aromates") t = fill("herb");
+    else if (c.crop === "salades") t = k === 3 ? ["salad", null, "salad"] : ["salad", "salad"];
+    else if (c.crop === "fraisiers") t = k === 3 ? [null, "straw", "straw"] : ["straw", "straw"];
+    else t = fromTop < Math.ceil(n / 2) ? fill("herb") : k === 3 ? ["salad", null, "salad"] : ["salad", "salad"];
+    if (c.pollin && fromTop % 3 === 1) t[0] = "flower";
     out.push(t);
   }
   return out;
 }
-
 export function attachSpec(c: Config) {
   const cmv = (v: number) => fmt(v * 100, (v * 100) % 1 ? 1 : 0);
   switch (c.rail) {

@@ -4,7 +4,7 @@ import { useConfig } from "./ConfigContext";
 import RailIcon from "./RailIcon";
 import {
   COLORS, COLOR_KEYS, CROPS, CROP_KEYS, FIELDS, Field, LEVEL_LABEL, ORIENTS, RAILS, RAIL_KEYS, VERSIONS, VERSION_KEYS,
-  attachShort, checks, compute, displayValue, fitTiers, fmt, maxCount, recapRows, summaryText, towerH,
+  attachShort, checks, compute, displayValue, fitTiers, fmt, maxCount, recapRows, summaryText, totalSites, towerH,
 } from "@/lib/config";
 import Link from "next/link";
 
@@ -36,7 +36,7 @@ function NumField({ f }: { f: Field }) {
       </div>
       <input type="range" min={f.min} max={max} step={f.step} value={v} onChange={(e) => setNumber(f.k, e.target.value)} aria-label={f.label} />
       {f.k === "tiers" && (
-        <span className="text-[0.8rem] text-iron-3">Hauteur totale : {fmt(towerH(config.tiers) * 100)} cm · {config.tiers * 3} sites de culture</span>
+        <span className="text-[0.8rem] text-iron-3">Hauteur totale : {fmt(towerH(config.tiers) * 100)} cm · {totalSites(config.tiers)} sites de culture</span>
       )}
     </div>
   );
@@ -202,7 +202,7 @@ export function Metrics() {
   const n = config.count;
   const items: [string, string, string][] = [
     ["Hauteur", `${fmt(r.th * 100)} cm`, `${config.tiers} étages${n > 1 ? ` × ${n}` : ""}`],
-    ["Plants", `${r.plants * n}`, r.flowers ? `dont ${r.flowers * n} pour les pollinisateurs` : `sur ${config.tiers * 3 * n} sites`],
+    ["Plants", `${r.plants * n}`, r.flowers ? `dont ${r.flowers * n} pour les pollinisateurs` : `sur ${totalSites(config.tiers) * n} sites`],
     ["Attache", attachShort(config), RAILS[config.rail].name.toLowerCase()],
     ["Eau en été", `${r.waterDays} jours`, "entre deux remplissages"],
     ["Énergie", r.energy, r.energySub],

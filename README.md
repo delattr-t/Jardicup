@@ -33,8 +33,13 @@ src/components/configurator  scène 3D, panneau 3 étapes, vue, contexte React
 src/components/site          en-tête, pied, accueil (hero 3D), lecteur vidéo
 src/app                      pages : / , /configurateur, /reservation, /merci, /mentions-legales
 public/media                 vidéos (rendus Blender) compressées + posters
+public/models/tour.glb       assemblage réel de la tour (export Fusion → glTF, compressé meshopt, 138 Ko)
 src/fonts                    Gabarito et Hanken Grotesk, auto-hébergées
 ```
+
+## Modèle 3D de la tour
+
+`public/models/tour.glb` vient de `Assemblage_tour.fbx` (Fusion) converti avec FBX2glTF puis `gltfpack -cc -kn -km`. Le configurateur le découpe en modules (réservoir, étage « 4 trous », étage « 3 trous », chute + toit, panneau + mât) dans `src/components/configurator/towerModel.ts` et les empile selon le nombre d'étages. Pour mettre à jour : exporter l'assemblage, reconvertir, et vérifier les cotes de `TOWER` et `CUPS` si la géométrie a changé.
 
 ## Réservations
 
