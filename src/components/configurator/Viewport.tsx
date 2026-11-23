@@ -139,7 +139,7 @@ export default function Viewport({ className = "", compact = false, cotesDefault
         <>
           <div className="pointer-events-none absolute inset-x-3 top-3 flex flex-wrap gap-1.5">
             {CAMS.map((c) => (
-              <button key={c.k} type="button" aria-pressed={cam === c.k} onClick={() => changeCam(c.k)} className="pointer-events-auto rounded-md border border-stone-3 bg-paper px-2.5 py-1.5 text-[0.8rem] font-medium text-iron transition-colors aria-pressed:border-iron aria-pressed:bg-iron aria-pressed:text-paper">
+              <button key={c.k} type="button" aria-pressed={cam === c.k} onClick={() => changeCam(c.k)} className="pointer-events-auto rounded-md border border-stone-3 bg-paper px-2.5 py-1.5 text-[0.8rem] font-medium text-iron transition-colors duration-100 aria-pressed:border-iron aria-pressed:bg-iron aria-pressed:text-paper">
                 {c.label}
               </button>
             ))}

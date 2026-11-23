@@ -457,7 +457,10 @@ export class BalconyScene {
     this.addCote("towerH", new THREE.Vector3(tx + 0.26, 0, zBack - 0.14), new THREE.Vector3(tx + 0.26, th, zBack - 0.14), `Tour ${cm(th)}`, "Hauteur de la tour", X);
     this.addCote("pos", new THREE.Vector3(-W / 2, 0.02, zBack - 0.32), new THREE.Vector3(xs[0], 0.02, zBack - 0.32), `axe ${cm(xs[0] + W / 2)}`, "Position de la tour depuis le bord gauche", Z);
     if (S.rail === "barreaux") {
-      const info = fr.userData as { start: number; pitch: number; n: number }, i = Math.max(0, Math.floor(info.n / 2) - 1);
+      const info = fr.userData as { start: number; pitch: number; n: number };
+      // on cote le vide loin de la tour pour que les étiquettes ne se chevauchent pas
+      const txs = towerXs(S).xs, cand = Array.from({ length: info.n - 1 }, (_, j) => j);
+      const i = cand.reduce((best, j) => { const xj = -W / 2 + info.start + j * info.pitch; const dj = Math.min(...txs.map((x) => Math.abs(x - xj))); const xb = -W / 2 + info.start + best * info.pitch; const db = Math.min(...txs.map((x) => Math.abs(x - xb))); return dj > db ? j : best; }, 0);
       const xa = -W / 2 + info.start + i * info.pitch + S.dia / 2, xb = xa + S.gap, y = H * 0.62;
       this.addCote("gap", new THREE.Vector3(xa, y, zr + 0.05), new THREE.Vector3(xb, y, zr + 0.05), `vide ${cm(S.gap)}`, "Vide entre barreaux", Yt, new THREE.Vector3(0, 0.06, 0));
     } else if (S.rail === "muret") {

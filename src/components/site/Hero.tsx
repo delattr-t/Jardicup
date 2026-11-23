@@ -12,7 +12,7 @@ export default function Hero() {
   return (
     <section className="relative isolate overflow-hidden bg-sand-2">
       <div className="mx-auto grid max-w-[1240px] items-end gap-6 px-4 pt-10 pb-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-10 lg:pt-16">
-        <div className="rise">
+        <div>
           <h1 className="text-[clamp(2.4rem,5.2vw+0.8rem,4.6rem)] font-black text-iron">
             La tour potagère qui s&rsquo;accroche à <span className="text-leaf-2">votre</span> garde-corps.
           </h1>
@@ -30,7 +30,7 @@ export default function Hero() {
           </ul>
         </div>
 
-        <div className="rise rise-2 grid gap-3">
+        <div className="rise grid gap-3">
           <div className="overflow-hidden rounded-xl border border-iron/15 shadow-[var(--shadow-float)]">
             <Viewport compact cotesDefault={false} initialCam="hero" className="h-[360px] sm:h-[440px] lg:h-[520px]" />
           </div>

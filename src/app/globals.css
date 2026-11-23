@@ -44,9 +44,12 @@ html {
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
 }
+/* Mouvement réduit : on coupe les déplacements, on garde les fondus de couleur et d'opacité. */
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  .rise { animation: none; }
+  .btn, .seg > button, .cote-editor, input[type="range"]::-webkit-slider-thumb { transition-property: background-color, border-color, color, box-shadow, opacity; }
+  .btn:active, .seg > button:active { transform: none; }
 }
 
 body {
@@ -150,10 +153,15 @@ button.cote:hover { background: var(--color-iron); color: var(--color-paper); }
 .video-frame video, .video-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 /* Apparition unique au chargement de la page (pas répétée par section) */
-@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-.rise { animation: rise 600ms var(--ease-out) both; }
-.rise-2 { animation-delay: 90ms; }
-.rise-3 { animation-delay: 180ms; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.rise { animation: rise 450ms var(--ease-out) both; animation-delay: 60ms; }
+
+/* Éditeur de cote : popover ancré à sa cote, entre à 0,96 depuis son ancre. */
+.cote-editor {
+  transform-origin: top center;
+  transition: opacity 160ms var(--ease-out), transform 160ms var(--ease-out);
+  @starting-style { opacity: 0; transform: scale(0.96); }
+}
 
 details > summary { list-style: none; }
 details > summary::-webkit-details-marker { display: none; }

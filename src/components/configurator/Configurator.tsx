@@ -26,7 +26,7 @@ export default function Configurator() {
               aria-controls={`panel-${i}`}
               tabIndex={tab === i ? 0 : -1}
               onClick={() => setTab(i)}
-              className="flex items-center justify-center gap-2 border-b-2 border-transparent px-2 py-3.5 text-[0.9rem] font-semibold text-iron-3 transition-colors aria-selected:border-leaf aria-selected:bg-paper aria-selected:text-iron"
+              className="flex items-center justify-center gap-2 border-b-2 border-transparent px-2 py-3.5 text-[0.9rem] font-semibold text-iron-3 transition-colors duration-100 aria-selected:border-leaf aria-selected:bg-paper aria-selected:text-iron"
             >
               <span className={`grid size-5 place-items-center rounded-full border text-[0.7rem] tnum ${tab === i ? "border-leaf bg-leaf text-paper" : "border-current"}`}>{i + 1}</span>
               {t}

@@ -131,7 +131,7 @@ export function StepTour() {
       <Group title="Coloris">
         <div className="flex flex-wrap items-center gap-2.5">
           {COLOR_KEYS.map((k) => (
-            <button key={k} type="button" aria-pressed={config.color === k} aria-label={COLORS[k].name} onClick={() => set("color", k)} style={{ background: COLORS[k].css }} className="size-9 rounded-full border-2 border-stone-3 transition-transform duration-150 ease-[var(--ease-out)] hover:scale-105 aria-pressed:border-iron aria-pressed:shadow-[inset_0_0_0_3px_var(--color-paper)]" />
+            <button key={k} type="button" aria-pressed={config.color === k} aria-label={COLORS[k].name} onClick={() => set("color", k)} style={{ background: COLORS[k].css }} className="size-9 rounded-full border-2 border-stone-3 transition-[border-color,transform] duration-120 ease-[var(--ease-out)] hover:border-iron-3 active:scale-[0.96] aria-pressed:border-iron aria-pressed:shadow-[inset_0_0_0_3px_var(--color-paper)]" />
           ))}
           <span className="text-[0.86rem] text-iron-2">
             {COLORS[config.color].name}
