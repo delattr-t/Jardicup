@@ -52,7 +52,7 @@ let promise: Promise<TowerParts> | null = null;
 
 /* gltfpack quantifie positions et normales en entiers : on repasse en flottants
    (en respectant la normalisation) avant toute transformation en place. */
-function toFloat(src: THREE.BufferGeometry) {
+export function toFloat(src: THREE.BufferGeometry) {
   const geo = new THREE.BufferGeometry();
   for (const name of ["position", "normal", "uv"]) {
     const a = src.getAttribute(name) as THREE.BufferAttribute | undefined;

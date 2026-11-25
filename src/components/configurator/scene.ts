@@ -8,6 +8,7 @@ import {
   cm, fmt, layout, railThickness, railTopY, towerH, towerXs,
 } from "@/lib/config";
 import { CUPS, TowerParts, instance, loadTowerParts } from "./towerModel";
+import { FLOWERS, HERBS, PlantModels, loadPlantModels, plantInstance, plantResources } from "./plantModels";
 
 const DEG = Math.PI / 180;
 
@@ -67,6 +68,7 @@ export class BalconyScene {
   private labelBuf = new Float32Array(0);
   private disposed = false;
   private parts: TowerParts | null = null;
+  private plants: PlantModels | null = null;
 
   constructor(private container: HTMLElement, initial: Config, private opts: SceneOptions) {
     this.config = initial;
@@ -105,7 +107,22 @@ export class BalconyScene {
     this.setCam(opts.initialCam ?? "iso", true);
     this.loop();
     // vrai modèle de la tour : chargé en arrière-plan, la scène est reconstruite à l'arrivée
-    loadTowerParts().then((p) => { if (!this.disposed) { this.parts = p; this.build(); } }).catch(() => { /* on garde le rendu procédural */ });
+    loadTowerParts()
+      .then((p) => {
+        if (this.disposed) return;
+        // géométries partagées entre reconstructions : ne pas les libérer à chaque changement
+        Object.values(p).forEach((grp) => grp.children.forEach((m: THREE.Object3D) => this.keep((m as THREE.Mesh).geometry)));
+        this.parts = p;
+        this.build();
+        // puis les plantes, plus lourdes, une fois la tour affichée
+        return loadPlantModels().then((pl) => {
+          if (this.disposed) return;
+          plantResources(pl).forEach((x) => this.keep(x));
+          this.plants = pl;
+          this.build();
+        });
+      })
+      .catch(() => { /* on garde le rendu procédural */ });
   }
 
   /* ---------- API ---------- */
@@ -141,10 +158,14 @@ export class BalconyScene {
     this.ro.disconnect();
     this.controls.dispose();
     this.disposeRoot();
-    this.shared.forEach((x) => x.dispose());
+    this.shared.forEach((x) => { if (!this.kept.has(x)) x.dispose(); });
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }
+
+  /** Ressource partagée entre scènes (cache de module) : ni libérée au rebuild, ni au démontage. */
+  private kept = new Set<THREE.Material | THREE.BufferGeometry>();
+  private keep(x: THREE.Material | THREE.BufferGeometry) { this.shared.add(x); this.kept.add(x); }
 
   /* ---------- matériaux ---------- */
   private mat(c: number, r = 0.8, m = 0) {
@@ -341,6 +362,24 @@ export class BalconyScene {
         tier.forEach((pl, j) => {
           if (!pl || !cups[j]) return;
           const c = cups[j];
+          if (this.plants) {
+            /* plante réaliste : pied enfoncé dans le logement, port incliné vers l'extérieur */
+            const k = idx * 7 + i * 3 + j;
+            const model = pl === "salad" ? "laitue" : pl === "herb" ? HERBS[k % HERBS.length] : pl === "flower" ? FLOWERS[k % FLOWERS.length] : null;
+            if (model) {
+              const p = plantInstance(this.plants, model);
+              const out = new THREE.Vector3(c.dir.x, 0, c.dir.z).normalize();
+              const lean = pl === "salad" ? 0.55 : pl === "flower" ? 0.18 : 0.32; // laitue : rosette tournée vers l'extérieur
+              const axis = up.clone().multiplyScalar(1 - lean).addScaledVector(out, lean).normalize();
+              const spin = new THREE.Quaternion().setFromAxisAngle(up, r() * Math.PI * 2);
+              p.quaternion.setFromUnitVectors(up, axis).multiply(spin);
+              p.position.copy(c.pos).addScaledVector(c.dir, pl === "salad" ? 0.0 : -0.015).add(new THREE.Vector3(0, y0 - (pl === "salad" ? 0.012 : 0.02), 0));
+              const base = pl === "salad" ? 0.72 : pl === "flower" ? 0.95 : 0.92;
+              p.scale.setScalar(base * (0.88 + r() * 0.24));
+              g.add(p);
+              return;
+            }
+          }
           const p = this.plant(pl, r, i + j);
           p.position.copy(c.pos).addScaledVector(c.dir, 0.014).add(new THREE.Vector3(0, y0 + 0.01, 0));
           if (pl === "herb") p.scale.setScalar(1.35);

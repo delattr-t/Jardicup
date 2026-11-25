@@ -34,12 +34,17 @@ src/components/site          en-tête, pied, accueil (hero 3D), lecteur vidéo
 src/app                      pages : / , /configurateur, /reservation, /merci, /mentions-legales
 public/media                 vidéos (rendus Blender) compressées + posters
 public/models/tour.glb       assemblage réel de la tour (export Fusion → glTF, compressé meshopt, 138 Ko)
+public/models/plantes.glb    plantes posées dans les logements (laitue, basilic, persil, ciboulette, menthe, romarin, 2 bouquets mellifères ; 374 Ko)
 src/fonts                    Gabarito et Hanken Grotesk, auto-hébergées
 ```
 
 ## Modèle 3D de la tour
 
 `public/models/tour.glb` vient de `Assemblage_tour.fbx` (Fusion) converti avec FBX2glTF puis `gltfpack -cc -kn -km`. Le configurateur le découpe en modules (réservoir, étage « 4 trous », étage « 3 trous », chute + toit, panneau + mât) dans `src/components/configurator/towerModel.ts` et les empile selon le nombre d'étages. Pour mettre à jour : exporter l'assemblage, reconvertir, et vérifier les cotes de `TOWER` et `CUPS` si la géométrie a changé.
+
+## Plantes 3D
+
+`public/models/plantes.glb` regroupe les plantes, chargées après la tour (`src/components/configurator/plantModels.ts`). Sources : pack Lettuce (laitue décimée de 415 000 à 6 000 triangles, texture 512 px), fichier `plant_598_blend.blend` (aromatiques décimées à 5 000 triangles, couleurs unies car les textures n'étaient pas dans le fichier), pack flowers (bouquets composés : souci + lavande + bleuet, coquelicot + bleuet + marguerite jaune, transparence alpha). Conversion avec Blender en module Python (`pip install bpy`) puis `gltfpack -cc -kn -km`. Les fraisiers restent dessinés par le code tant qu'il n'y a pas de maillage de fraisier.
 
 ## Réservations
 
