@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BalconyScene, CamName, Cote, CoteKey } from "./scene";
 import { useConfig } from "./ConfigContext";
-import { TIER0_Y, CAP_H, TIER_H, FIELD_BY_KEY, NumKey, clamp, towerH, towerXs } from "@/lib/config";
+import { FIELD_BY_KEY, NumKey, clamp, towerXs } from "@/lib/config";
 
 const CAMS: { k: CamName; label: string }[] = [
   { k: "iso", label: "3/4" },
@@ -71,8 +71,8 @@ export default function Viewport({ className = "", compact = false, cotesDefault
     const key = c.key;
     const S = configRef.current;
     let label = c.label, unit = "cm", value = 0;
-    if (key === "towerH") { label = "Hauteur de la tour (arrondie à l'étage)"; value = Math.round(towerH(S.tiers) * 100); }
-    else if (key === "pos") { label = "Axe de la tour depuis le bord gauche"; value = Math.round((towerXs(S).xs[0] + S.W / 2) * 100); }
+    if (key === "towerH") return; // hauteur fixe : celle de la tour réelle
+    if (key === "pos") { label = "Axe de la tour depuis le bord gauche"; value = Math.round((towerXs(S).xs[0] + S.W / 2) * 100); }
     else { const f = FIELD_BY_KEY[key as NumKey]; label = f.label; unit = f.unit; value = +(S[key as NumKey] * f.f).toFixed(1); }
     const vr = vpRef.current!.getBoundingClientRect(), ar = el.getBoundingClientRect();
     setEditor({ key, label, unit, value, x: clamp(ar.left - vr.left + ar.width / 2 - 110, 8, vr.width - 228), y: clamp(ar.bottom - vr.top + 8, 8, vr.height - 110) });
@@ -82,10 +82,7 @@ export default function Viewport({ className = "", compact = false, cotesDefault
     const v = parseFloat(raw.replace(",", "."));
     const S = configRef.current;
     if (!isFinite(v)) { setEditor(null); return; }
-    if (editor.key === "towerH") {
-      const n = Math.round((v / 100 - (TIER0_Y + CAP_H)) / TIER_H);
-      patch({ tiers: clamp(n, 3, 12) });
-    } else if (editor.key === "pos") {
+    if (editor.key === "pos") {
       const { margin, avail } = towerXs(S);
       patch({ pos: avail > 0 ? clamp((v / 100 - margin) / avail, 0, 1) : 0.5 });
     } else setNumber(editor.key as NumKey, v);

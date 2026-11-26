@@ -54,7 +54,7 @@ export const DEFAULT_CONFIG: Config = {
   orient: "S",
   floor: 3,
   outlet: false,
-  tiers: 6,
+  tiers: 4,
   count: 1,
   pos: 0.35,
   version: "classique",
@@ -67,14 +67,19 @@ export const DEFAULT_CONFIG: Config = {
 export const FEET = 0,
   BASE_H = 0.251, // réservoir + capuchon
   TIER_H = 0.132, // pas d'empilement des étages
-  CAP_H = 0.093; // chute + toit
+  CAP_H = 0.083; // chute + toit
 export const BASE_W = 0.34, // réservoir + boîte batterie
   BASE_DEPTH = 0.25,
   TIER_W = 0.28;
 /** bas du premier étage : il s'emboîte 2 cm dans le capuchon du réservoir */
 export const TIER0_Y = 0.231;
 export const TOWER_SPACING = 0.42;
-export const towerH = (n: number) => TIER0_Y + n * TIER_H + CAP_H;
+/** La tour réelle (assemblage v14) : 4 étages, alternance « 4 trous » / « 3 trous ». */
+export const TIERS = 4;
+/** hauteur hors tout, réservoir au sol compris (84 cm pour 4 étages) */
+export const towerH = (n: number = TIERS) => TIER0_Y + n * TIER_H + CAP_H;
+/** haut du panneau solaire de la version Premium, depuis le sol (104 cm) */
+export const PANEL_TOP = 1.043;
 /** étages pairs (« 4 trous ») : façade + deux côtés ; étages impairs (« 3 trous ») : deux côtés */
 export const sitesPerTier = (i: number) => (i % 2 === 0 ? 3 : 2);
 export const totalSites = (n: number) => Array.from({ length: n }, (_, i) => sitesPerTier(i)).reduce((a, b) => a + b, 0);
@@ -168,7 +173,6 @@ export const FIELDS: Field[] = [
   { k: "murT", label: "Épaisseur du muret", unit: "cm", f: 100, min: 8, max: 30, step: 1, group: "rail", rail: "muret" },
   { k: "lisseD", label: "Diamètre de la main courante", unit: "mm", f: 1000, min: 25, max: 70, step: 1, group: "rail", rail: "muret" },
   { k: "floor", label: "Étage", unit: "", f: 1, min: 0, max: 20, step: 1, group: "env" },
-  { k: "tiers", label: "Étages de culture", unit: "", f: 1, min: 3, max: 12, step: 1, group: "tower" },
   { k: "count", label: "Nombre de tours", unit: "", f: 1, min: 1, max: 4, step: 1, group: "tower" },
   { k: "pos", label: "Position le long du garde-corps", unit: "%", f: 100, min: 0, max: 100, step: 1, group: "tower" },
 ];
@@ -184,15 +188,13 @@ export const mm = (v: number) => `${fmt(v * 1000)} mm`;
 export function maxCount(c: Config) {
   return clamp(Math.floor((c.W - 0.12) / TOWER_SPACING), 1, 4);
 }
-export function fitTiers(c: Config) {
-  return clamp(Math.ceil((c.H + 0.05 - (TIER0_Y + CAP_H)) / TIER_H), 3, 12);
-}
+
 export function normalize(c: Config): Config {
   return {
     ...c,
     murH: Math.min(c.murH, c.H - 0.12),
     count: clamp(c.count, 1, maxCount(c)),
-    tiers: clamp(Math.round(c.tiers), 3, 12),
+    tiers: TIERS, // hauteur fixe : celle de la tour réelle
     pos: clamp(c.pos, 0, 1),
   };
 }
@@ -332,7 +334,7 @@ export function checks(c: Config, r: Computed): [Level, string][] {
   if (c.version === "appel" && !c.outlet) add("bad", "La version Appel a besoin d'une prise sur le balcon. Choisissez Classique ou Premium, ou cochez la prise si vous en avez une.");
   if (c.version === "premium" && c.orient === "N") add("warn", "Balcon nord : le panneau produira 3 à 6 Wh par jour, à peine la consommation. La version Classique suffit sans doute.");
   if (["vitre", "plein", "muret"].includes(c.rail) && r.th < c.H - 0.04)
-    add("warn", `La tour s'arrête ${fmt((c.H - r.th) * 100)} cm sous le haut du garde-corps : l'attache passera par une rallonge. Avec ${fitTiers(c)} étages, elle s'accroche directement.`);
+    add("warn", `La tour s'arrête ${fmt((c.H - r.th) * 100)} cm sous le haut du garde-corps : l'attache passera par une rallonge.`);
   if (over > 0.6) add("bad", `La tour dépasse le garde-corps de ${fmt(over * 100)} cm : beaucoup de prise au vent. Restez sous 60 cm de dépassement.`);
   else if (over > 0.3 && c.floor >= 5) add("warn", `${fmt(over * 100)} cm au-dessus du garde-corps au ${c.floor}e étage : le vent y est plus fort. Une tour plus basse est plus sûre.`);
   if (c.H < 1.0) add("warn", "Garde-corps sous 1,00 m, la hauteur minimale dans le neuf. Gardez la tour à distance des zones où un enfant pourrait grimper.");

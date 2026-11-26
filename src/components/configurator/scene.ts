@@ -400,8 +400,6 @@ export class BalconyScene {
           const c = cups[j]; if (!c) return;
           const nv = new THREE.Vector3(c.dir.x, 0, c.dir.z).normalize();
           const surf = new THREE.Vector3(R * nv.x, y, -0.03 + R * nv.z);
-          const axis = nv.clone().multiplyScalar(Math.cos(tilt)).add(up.clone().multiplyScalar(Math.sin(tilt))).normalize();
-          const pot = this.mesh(this.GEO.pot, MAT.pot); pot.position.copy(surf).addScaledVector(nv, 0.006); pot.quaternion.setFromUnitVectors(up, axis); g.add(pot);
           if (pl) { const p = this.plant(pl, r, i + j); p.position.copy(surf).addScaledVector(nv, 0.022).addScaledVector(up, 0.022); p.rotation.y = r() * Math.PI; g.add(p); }
         });
       });
@@ -520,7 +518,7 @@ export class BalconyScene {
     this.addCote("D", new THREE.Vector3(W / 2 + 0.22, 0, 0), new THREE.Vector3(W / 2 + 0.22, 0, D), cm(D), "Profondeur", X);
     this.addCote("H", new THREE.Vector3(-W / 2 + 0.12, 0, D + 0.1), new THREE.Vector3(-W / 2 + 0.12, H, D + 0.1), cm(H), "Hauteur du garde-corps", X);
     const tx = xs[xs.length - 1], th = towerH(S.tiers);
-    this.addCote("towerH", new THREE.Vector3(tx + 0.26, 0, zBack - 0.14), new THREE.Vector3(tx + 0.26, th, zBack - 0.14), `Tour ${cm(th)}`, "Hauteur de la tour", X);
+    this.addCote("towerH", new THREE.Vector3(tx + 0.26, 0, zBack - 0.14), new THREE.Vector3(tx + 0.26, th, zBack - 0.14), `Tour ${cm(th)}`, "Hauteur de la tour", X, new THREE.Vector3(), true);
     this.addCote("pos", new THREE.Vector3(-W / 2, 0.02, zBack - 0.32), new THREE.Vector3(xs[0], 0.02, zBack - 0.32), `axe ${cm(xs[0] + W / 2)}`, "Position de la tour depuis le bord gauche", Z);
     if (S.rail === "barreaux") {
       const info = fr.userData as { start: number; pitch: number; n: number };

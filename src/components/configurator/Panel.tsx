@@ -4,7 +4,7 @@ import { useConfig } from "./ConfigContext";
 import RailIcon from "./RailIcon";
 import {
   COLORS, COLOR_KEYS, CROPS, CROP_KEYS, FIELDS, Field, LEVEL_LABEL, ORIENTS, RAILS, RAIL_KEYS, VERSIONS, VERSION_KEYS,
-  attachShort, checks, compute, displayValue, fitTiers, fmt, maxCount, recapRows, summaryText, totalSites, towerH,
+  PANEL_TOP, attachShort, checks, compute, displayValue, fmt, maxCount, recapRows, summaryText, totalSites, towerH,
 } from "@/lib/config";
 import Link from "next/link";
 
@@ -35,9 +35,6 @@ function NumField({ f }: { f: Field }) {
         </span>
       </div>
       <input type="range" min={f.min} max={max} step={f.step} value={v} onChange={(e) => setNumber(f.k, e.target.value)} aria-label={f.label} />
-      {f.k === "tiers" && (
-        <span className="text-[0.8rem] text-iron-3">Hauteur totale : {fmt(towerH(config.tiers) * 100)} cm · {totalSites(config.tiers)} sites de culture</span>
-      )}
     </div>
   );
 }
@@ -99,11 +96,13 @@ export function StepTour() {
   const { config, set, patch } = useConfig();
   return (
     <div className="grid gap-7">
-      <Group title="Hauteur et position">
+      <Group title="Votre tour">
+        <p className="text-[0.88rem] text-iron-2">
+          4 étages, <b className="text-iron tnum">{fmt(towerH() * 100)} cm</b> de haut réservoir compris
+          {config.version === "premium" && <>, <b className="text-iron tnum">{fmt(PANEL_TOP * 100)} cm</b> avec le panneau solaire</>}
+          {" "}· {totalSites(config.tiers)} logements de culture.
+        </p>
         {FIELDS.filter((f) => f.group === "tower").map((f) => <NumField key={f.k} f={f} />)}
-        <button type="button" onClick={() => patch({ tiers: fitTiers(config) })} className="justify-self-start rounded-md border border-dashed border-leaf px-2.5 py-1.5 text-[0.82rem] font-semibold text-leaf-2 hover:bg-leaf/10">
-          Caler la hauteur sur mon garde-corps
-        </button>
       </Group>
       <Group title="Énergie">
         <div className="grid gap-2">
