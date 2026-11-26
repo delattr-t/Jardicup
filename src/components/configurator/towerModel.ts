@@ -116,7 +116,23 @@ export function loadTowerParts(url = "/models/tour.glb"): Promise<TowerParts> {
           panel: take(["PANNEAU SOLAIRE v5:1"], tierY(4)),
         };
         // le panneau : corps sombre (une seule pièce dans l'export)
-        parts.panel.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.userData.mat = "panel"; });
+        parts.panel.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (!m.isMesh) return;
+          m.userData.mat = "panel";
+          // projection sur le plan du panneau : u le long de x, v le long de la pente
+          const g = m.geometry; g.computeBoundingBox();
+          const b = g.boundingBox!, slope = new THREE.Vector3(0, b.max.y - b.min.y, b.max.z - b.min.z).normalize();
+          const pos = g.getAttribute("position"), uv = new Float32Array(pos.count * 2), v = new THREE.Vector3();
+          const vMin = Math.min(b.min.y * slope.y + b.min.z * slope.z, b.max.y * slope.y + b.max.z * slope.z);
+          const vLen = Math.abs((b.max.y - b.min.y) * slope.y + (b.max.z - b.min.z) * slope.z) || 1;
+          for (let i = 0; i < pos.count; i++) {
+            v.fromBufferAttribute(pos, i);
+            uv[i * 2] = (v.x - b.min.x) / (b.max.x - b.min.x || 1);
+            uv[i * 2 + 1] = (v.y * slope.y + v.z * slope.z - vMin) / vLen;
+          }
+          g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+        });
         // le mât du panneau est exporté avec le toit : on le déplace vers le module panneau
         for (const m of [...parts.cap.children] as THREE.Mesh[]) {
           m.geometry.computeBoundingBox();

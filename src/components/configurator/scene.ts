@@ -3,9 +3,14 @@
    à chaque changement de configuration (debounced sur rAF). */
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import {
   BASE_DEPTH, BASE_H, BASE_W, CAP_H, COLORS, Config, ORIENTS, PlantType, SUN_AZ, TIER0_Y, TIER_H, TIER_W,
-  cm, fmt, layout, railThickness, railTopY, towerH, towerXs,
+  cm, fmt, layout, railThickness, towerH, towerXs,
 } from "@/lib/config";
 import { CUPS, TowerParts, instance, loadTowerParts } from "./towerModel";
 import { FLOWERS, HERBS, PlantModels, loadPlantModels, plantInstance, plantResources } from "./plantModels";
@@ -48,6 +53,10 @@ export class BalconyScene {
   private camera: THREE.PerspectiveCamera;
   private controls: OrbitControls;
   private sun: THREE.DirectionalLight;
+  private composer: EffectComposer | null = null;
+  private gtao: GTAOPass | null = null;
+  private dirty = true;
+  private granite: THREE.Texture | null = null;
   private root = new THREE.Group();
   private shared = new Set<THREE.Material | THREE.BufferGeometry>();
   private MAT!: Record<string, THREE.MeshStandardMaterial>;
@@ -75,8 +84,11 @@ export class BalconyScene {
     this.reduced = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    /* rendu « photo » : tons ACES, ombres douces, éclairage d'environnement */
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.18;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.VSMShadowMap;
     this.renderer.domElement.setAttribute("aria-label", "Vue 3D du balcon et de la tour");
     this.renderer.domElement.setAttribute("role", "img");
     this.renderer.domElement.style.display = "block";
@@ -84,19 +96,48 @@ export class BalconyScene {
     this.renderer.domElement.style.height = "100%";
     container.prepend(this.renderer.domElement);
 
-    this.camera = new THREE.PerspectiveCamera(38, 1, 0.05, 120);
+    this.camera = new THREE.PerspectiveCamera(38, 1, 0.05, 160);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     Object.assign(this.controls, { enableDamping: true, dampingFactor: 0.08, maxPolarAngle: Math.PI * 0.495, minDistance: 0.6, maxDistance: 14, screenSpacePanning: true });
     this.controls.addEventListener("start", () => { this.camAnim = null; });
+    this.controls.addEventListener("change", () => { this.dirty = true; });
 
-    this.scene.add(new THREE.HemisphereLight(0xf4f8ff, 0x8c8676, 0.62));
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.14));
-    this.sun = new THREE.DirectionalLight(0xfff1dc, 0.95);
+    // lumière du ciel (environnement) + soleil
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    const env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    pmrem.dispose();
+    this.scene.environment = env;
+    this.scene.environmentIntensity = 0.55;
+    this.scene.add(new THREE.HemisphereLight(0xdfe9f5, 0x6d6a63, 0.55));
+    this.sun = new THREE.DirectionalLight(0xffeccf, 2.6);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
-    this.sun.shadow.bias = -0.0005;
-    this.sun.shadow.normalBias = 0.02;
+    this.sun.shadow.radius = 5;
+    this.sun.shadow.blurSamples = 12;
+    this.sun.shadow.bias = -0.0004;
+    this.sun.shadow.normalBias = 0.015;
     this.scene.add(this.sun, this.sun.target, this.root);
+
+    // post-traitement : occlusion ambiante (contact des pièces, creux des feuilles) sauf petits écrans
+    const small = Math.min(window.innerWidth, window.innerHeight) < 600 || (navigator.hardwareConcurrency || 8) <= 4;
+    if (!small) {
+      const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+      this.composer = new EffectComposer(this.renderer, rt);
+      this.composer.addPass(new RenderPass(this.scene, this.camera));
+      this.gtao = new GTAOPass(this.scene, this.camera, 1, 1);
+      this.gtao.updateGtaoMaterial({ radius: 0.22, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: 16 });
+      this.gtao.blendIntensity = 0.9;
+      this.composer.addPass(this.gtao);
+      this.composer.addPass(new OutputPass());
+    }
+
+    new THREE.TextureLoader().load("/textures/granite.jpg", (t) => {
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
+      this.granite = t;
+      if (!this.disposed) this.build();
+    });
 
     this.initMaterials();
     this.setTheme(opts.theme);
@@ -134,12 +175,14 @@ export class BalconyScene {
   }
   setTheme(t: { scene: string; cote: string }) {
     this.opts.theme = t;
-    this.scene.background = new THREE.Color(t.scene);
+    this.scene.background = new THREE.Color(0xe9edef); // ciel clair et voilé, comme sur les rendus
     if (this.coteMat) this.coteMat.color.set(t.cote);
+    this.dirty = true;
   }
   setShowCotes(v: boolean) {
     this.showCotes = v;
     this.root.traverse((o) => { if ((o as THREE.LineSegments).isLineSegments) o.visible = v; });
+    this.dirty = true;
   }
   setCam(name: CamName, instant = false) {
     const c = this.camPreset(name);
@@ -148,6 +191,7 @@ export class BalconyScene {
       this.controls.target.copy(c.t);
       this.controls.update();
       this.camAnim = null;
+      this.dirty = true;
       return;
     }
     this.camAnim = { p0: this.camera.position.clone(), t0: this.controls.target.clone(), p1: c.p, t1: c.t, start: performance.now(), dur: 650 };
@@ -159,6 +203,10 @@ export class BalconyScene {
     this.controls.dispose();
     this.disposeRoot();
     this.shared.forEach((x) => { if (!this.kept.has(x)) x.dispose(); });
+    this.composer?.dispose();
+    this.gtao?.dispose();
+    this.granite?.dispose();
+    (this.scene.environment as THREE.Texture | null)?.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }
@@ -176,9 +224,10 @@ export class BalconyScene {
   private initMaterials() {
     const mat = this.mat.bind(this);
     this.MAT = {
-      slabSide: mat(0xb9b3a8, 0.95), wall: mat(0xe6e0d6, 0.95), frame: mat(0x3a403c, 0.55, 0.3),
-      metal: mat(0x2b302d, 0.45, 0.5), concrete: mat(0xc3bdb2, 0.95), clamp: mat(0x262b28, 0.55, 0.2),
-      strap: mat(0xd49b3a, 0.6), pot: mat(0x1e2220, 0.85), panel: mat(0x1c2e52, 0.25, 0.35), panelFrame: mat(0xb8bdbf, 0.4, 0.6), cable: mat(0x202322, 0.6),
+      slabSide: mat(0xd9d3c7, 0.92), wall: mat(0xeee8dc, 0.9), frame: mat(0x2a2d2c, 0.45, 0.4),
+      metal: mat(0x181a19, 0.36, 0.6), concrete: mat(0xd2ccc0, 0.92), clamp: mat(0x262b28, 0.55, 0.2),
+      stone: mat(0xfbf6ec, 0.85), stoneShade: mat(0xefe8da, 0.88), winGlass: mat(0x7d8b94, 0.08, 0.7), winFrame: mat(0xffffff, 0.55), asphalt: mat(0x4a4c4d, 0.95),
+      strap: mat(0xd49b3a, 0.6), pot: mat(0x1e2220, 0.85), panel: mat(0x1d3d80, 0.18, 0.45), panelFrame: mat(0xd8dcde, 0.35, 0.7), cable: mat(0x202322, 0.6),
       leafLight: mat(0x9bcb5c, 0.7), leafMid: mat(0x5e9c3e, 0.7), leafDark: mat(0x3a722c, 0.75),
       red: mat(0xd2372b, 0.5), blue: mat(0x5a78d2, 0.6), orange: mat(0xea8a2c, 0.6), outlet: mat(0xf1efea, 0.5),
     };
@@ -186,13 +235,15 @@ export class BalconyScene {
     this.MAT.doorGlass = new THREE.MeshStandardMaterial({ color: 0x8faab5, roughness: 0.12, metalness: 0.15, transparent: true, opacity: 0.6 });
     this.shared.add(this.MAT.glass);
     this.shared.add(this.MAT.doorGlass);
-    for (const k of Object.keys(COLORS)) this.towerMats[k] = mat(COLORS[k as keyof typeof COLORS].hex, 0.62);
+    for (const k of Object.keys(COLORS)) this.towerMats[k] = mat(COLORS[k as keyof typeof COLORS].hex, 0.58); // PLA mat
     this.GEO = {
       ico: new THREE.IcosahedronGeometry(1, 1),
       ico2: new THREE.IcosahedronGeometry(1, 2),
       pot: new THREE.CylinderGeometry(0.026, 0.021, 0.05, 18),
     };
     Object.values(this.GEO).forEach((g) => this.shared.add(g));
+    // façade d'en face en plein soleil : légère auto-illumination chaude, comme la surexposition des rendus
+    for (const k of ["stone", "stoneShade", "winFrame"]) { this.MAT[k].emissive.set(0xfff1dc); this.MAT[k].emissiveIntensity = k === "winFrame" ? 0.25 : 0.32; }
     this.coteMat = new THREE.LineBasicMaterial({ color: new THREE.Color(this.opts.theme.cote), depthTest: false, transparent: true });
     this.shared.add(this.coteMat);
   }
@@ -219,15 +270,21 @@ export class BalconyScene {
     const w = this.container.clientWidth, h = this.container.clientHeight;
     if (!w || !h) return;
     this.renderer.setSize(w, h, false);
+    if (this.composer) {
+      const pr = this.renderer.getPixelRatio();
+      this.composer.setPixelRatio(pr);
+      this.composer.setSize(w, h);
+    }
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.dirty = true;
   }
   private disposeRoot() {
     this.root.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.geometry && !this.shared.has(m.geometry)) m.geometry.dispose();
       const mat = m.material as THREE.MeshStandardMaterial | undefined;
-      if (mat && !this.shared.has(mat)) { mat.map?.dispose(); mat.dispose(); }
+      if (mat && !this.shared.has(mat)) { if (mat.map && mat.map !== this.granite) mat.map.dispose(); mat.dispose(); }
     });
     this.scene.remove(this.root);
     this.root = new THREE.Group();
@@ -268,10 +325,10 @@ export class BalconyScene {
     switch (S.rail) {
       case "barreaux": {
         posts();
-        add(this.mesh(box(L, 0.04, 0.05), MAT.metal, L / 2, H - 0.02, 0));
-        add(this.mesh(box(L, 0.03, 0.03), MAT.metal, L / 2, 0.085, 0));
+        add(this.mesh(box(L, 0.05, 0.065), MAT.metal, L / 2, H - 0.025, 0));
+        add(this.mesh(box(L, 0.03, 0.04), MAT.metal, L / 2, 0.085, 0));
         const pitch = S.gap + S.dia, n = Math.max(1, Math.floor((L - 0.08) / pitch)), start = (L - (n - 1) * pitch) / 2, bh = H - 0.04 - 0.1;
-        const geo = new THREE.CylinderGeometry(S.dia / 2, S.dia / 2, bh, 8);
+        const geo = box(S.dia, bh, Math.max(0.03, S.dia * 2.2)); // fer plat, comme sur les rendus
         for (let i = 0; i < n; i++) add(this.mesh(geo, MAT.metal, start + i * pitch, 0.1 + bh / 2, 0));
         Object.assign(info, { start, pitch, n });
         break;
@@ -356,7 +413,10 @@ export class BalconyScene {
         g.add(tier);
       }
       const cap = instance(this.parts.cap, mats); cap.position.y = TIER0_Y + n * TIER_H; g.add(cap);
-      if (S.version === "premium") { const panel = instance(this.parts.panel, mats); panel.position.y = TIER0_Y + n * TIER_H; g.add(panel); }
+      if (S.version === "premium") {
+        const panel = instance(this.parts.panel, { body: tm, steel: tm, panel: this.panelMat() });
+        panel.position.y = TIER0_Y + n * TIER_H; g.add(panel);
+      }
       lay.forEach((tier, i) => {
         const cups = CUPS[i % 2 === 0 ? "tier4" : "tier3"], y0 = TIER0_Y + i * TIER_H;
         tier.forEach((pl, j) => {
@@ -404,41 +464,7 @@ export class BalconyScene {
         });
       });
     }
-    // attaches (repère local : dos de la tour à z=0, garde-corps vers +z)
-    const t = railThickness(S), gap = 0.025, zr = gap + t / 2, zo = gap + t, top = Math.min(th, S.H);
-    if (S.rail === "barreaux") {
-      const h1 = Math.min(S.H - 0.16, th - 0.09);
-      for (const h of [h1, Math.max(0.32, h1 - 0.42)]) {
-        g.add(this.mesh(box(0.24, 0.035, gap + t + 0.006), MAT.clamp, 0, h, (gap + t) / 2));
-        g.add(this.mesh(box(0.24, 0.035, 0.012), MAT.clamp, 0, h, zo + 0.006));
-      }
-    } else if (S.rail === "vitre" || S.rail === "plein") {
-      const yl = top - 0.12, yh = S.H + 0.015;
-      for (const hx of [-0.05, 0.05]) {
-        g.add(this.mesh(box(0.045, yh - yl, 0.012), MAT.clamp, hx, (yl + yh) / 2, 0.006));
-        g.add(this.mesh(box(0.045, 0.012, zo + 0.012), MAT.clamp, hx, yh, (zo + 0.012) / 2));
-        g.add(this.mesh(box(0.045, 0.07, 0.012), MAT.clamp, hx, S.H - 0.02, zo + 0.012));
-      }
-    } else if (S.rail === "grillage") {
-      if (S.maille >= 0.02) {
-        [top - 0.08, Math.max(0.35, top - 0.4), Math.max(0.3, top - 0.7)].forEach((h, i) => {
-          if (i === 2 && top < 0.8) return;
-          g.add(this.mesh(box(0.03, 0.012, zo + 0.012), MAT.clamp, 0, h, (zo + 0.012) / 2));
-          g.add(this.mesh(box(0.03, 0.05, 0.01), MAT.clamp, 0, h - 0.02, zo + 0.01));
-        });
-      }
-    } else {
-      const yr = S.H - S.lisseD / 2, yl = top - 0.14;
-      g.add(this.mesh(box(0.05, yr - yl, 0.012), MAT.clamp, 0, (yl + yr) / 2, 0.006));
-      g.add(this.mesh(box(0.05, 0.012, zr), MAT.clamp, 0, yr, zr / 2));
-      const ring = this.mesh(new THREE.TorusGeometry(S.lisseD / 2 + 0.007, 0.006, 8, 26), MAT.clamp, 0, yr, zr);
-      ring.rotation.y = Math.PI / 2; g.add(ring);
-    }
-    // sangle anti-chute
-    const ry = railTopY(S);
-    g.add(this.segment(new THREE.Vector3(0.075, th - 0.06, 0.004), new THREE.Vector3(0.075, ry + 0.01, zr), 0.02, 0.004, MAT.strap));
-    const loop = this.mesh(new THREE.TorusGeometry(Math.max(0.03, (S.rail === "muret" ? S.lisseD : t) / 2 + 0.012), 0.004, 6, 24), MAT.strap, 0.075, ry - 0.005, zr);
-    loop.rotation.y = Math.PI / 2; g.add(loop);
+    const t = railThickness(S), zr = 0.025 + t / 2;
     // panneau solaire (version procédurale seulement)
     if (S.version === "premium" && !this.parts) {
       const py = S.H + 0.15;
@@ -447,6 +473,75 @@ export class BalconyScene {
       pg.add(this.mesh(box(0.26, 0.012, 0.19), MAT.panelFrame)); pg.add(this.mesh(box(0.24, 0.004, 0.17), MAT.panel, 0, 0.006, 0)); g.add(pg);
     }
     return g;
+  }
+
+  /* ---------- panneau solaire : cellules monocristallines + cadre alu ---------- */
+  private _panelMat: THREE.MeshStandardMaterial | null = null;
+  private panelMat() {
+    if (this._panelMat) return this._panelMat;
+    const c = document.createElement("canvas"); c.width = 512; c.height = 512;
+    const x = c.getContext("2d")!;
+    x.fillStyle = "#e9ecee"; x.fillRect(0, 0, 512, 512); // cadre
+    const m = 22, cols = 6, rows = 6, gw = (512 - 2 * m) / cols, gh = (512 - 2 * m) / rows;
+    for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
+      const g = x.createLinearGradient(0, m + j * gh, 0, m + (j + 1) * gh);
+      g.addColorStop(0, "#2a56b8"); g.addColorStop(1, "#173a86");
+      x.fillStyle = g; x.fillRect(m + i * gw + 2, m + j * gh + 2, gw - 4, gh - 4);
+      x.strokeStyle = "rgba(200,215,235,0.35)"; x.lineWidth = 1;
+      for (let b = 1; b < 4; b++) { x.beginPath(); x.moveTo(m + i * gw + (b * gw) / 4, m + j * gh + 3); x.lineTo(m + i * gw + (b * gw) / 4, m + (j + 1) * gh - 3); x.stroke(); }
+    }
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+    this._panelMat = new THREE.MeshStandardMaterial({ map: t, roughness: 0.15, metalness: 0.35, envMapIntensity: 1.2 });
+    this.shared.add(this._panelMat);
+    return this._panelMat;
+  }
+
+  /* ---------- décor : rue et immeuble d'en face ---------- */
+  private buildStreet(W: number, D: number, floor: number) {
+    const MAT = this.MAT, box = this.box, root = this.root;
+    const fl = 3.1, ground = -Math.max(0, floor) * fl - 0.2; // rez-de-chaussée sous nos pieds
+    const zF = D + 12; // largeur de rue
+    const width = 34, x0 = -width / 2;
+    const floorsBelow = Math.max(0, floor) + 1, floorsAbove = 3;
+    const y0 = ground, y1 = ground + (floorsBelow + floorsAbove) * fl;
+    // chaussée + trottoirs
+    const road = this.mesh(new THREE.PlaneGeometry(width * 1.5, zF - D + 6), MAT.asphalt, 0, ground, (D + zF) / 2, false);
+    road.rotation.x = -Math.PI / 2; road.receiveShadow = true; root.add(road);
+    // mur de la façade d'en face
+    root.add(this.mesh(box(width, y1 - y0, 0.4), MAT.stone, 0, (y0 + y1) / 2, zF + 0.2, false));
+    // bandeaux horizontaux (corniches) et grand balcon filant du 5e
+    const nF = floorsBelow + floorsAbove;
+    for (let f = 1; f <= nF; f++) {
+      const y = y0 + f * fl;
+      root.add(this.mesh(box(width, 0.14, 0.18), MAT.stoneShade, 0, y - 0.05, zF - 0.06, false));
+    }
+    // fenêtres : instanciées (vitre, encadrement, garde-corps de balconnet)
+    const cols = Math.floor(width / 2.4), rows = nF;
+    const nWin = cols * rows;
+    const glass = new THREE.InstancedMesh(box(1.05, 2.05, 0.06), MAT.winGlass, nWin);
+    const surround = new THREE.InstancedMesh(box(1.22, 2.2, 0.04), MAT.winFrame, nWin);
+    const frameTop = new THREE.InstancedMesh(box(1.3, 0.22, 0.14), MAT.stoneShade, nWin);
+    const balc = new THREE.InstancedMesh(box(1.25, 0.05, 0.05), MAT.metal, nWin * 2);
+    const bars = new THREE.InstancedMesh(box(0.018, 0.55, 0.018), MAT.metal, nWin * 9);
+    const m4 = new THREE.Matrix4();
+    let k = 0, kb = 0, kr = 0;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const x = x0 + 1.2 + c * 2.4 + (width - cols * 2.4) / 2, yb = y0 + r * fl + 0.55, zc = zF - 0.01;
+        if (r === 0) continue; // rez-de-chaussée : vitrines plus bas, laissées pleines
+        glass.setMatrixAt(k, m4.makeTranslation(x, yb + 1.02, zc - 0.005));
+        surround.setMatrixAt(k, m4.makeTranslation(x, yb + 1.02, zc + 0.02));
+        frameTop.setMatrixAt(k, m4.makeTranslation(x, yb + 2.18, zc - 0.05));
+        for (const yy of [yb + 0.58, yb + 0.06]) balc.setMatrixAt(kb++, m4.makeTranslation(x, yy, zc - 0.22));
+        for (let i = 0; i < 9; i++) bars.setMatrixAt(kr++, m4.makeTranslation(x - 0.58 + i * 0.145, yb + 0.32, zc - 0.22));
+        k++;
+      }
+    }
+    for (const im of [glass, surround, frameTop]) { im.count = k; im.instanceMatrix.needsUpdate = true; root.add(im); }
+    balc.count = kb; bars.count = kr; balc.instanceMatrix.needsUpdate = true; bars.instanceMatrix.needsUpdate = true; root.add(balc, bars);
+    // toit de zinc
+    const roof = this.mesh(box(width, 1.4, 2.2), MAT.frame, 0, y1 + 0.5, zF + 0.9, false);
+    roof.rotation.x = 0.55; root.add(roof);
   }
 
   /* ---------- cotes ---------- */
@@ -466,7 +561,12 @@ export class BalconyScene {
     const root = this.root;
     // dalle
     root.add(this.mesh(box(W, 0.16, D), MAT.slabSide, 0, -0.081, D / 2));
-    const tile = new THREE.MeshStandardMaterial({ map: this.tileTexture(W, D), roughness: 0.9 });
+    let tile: THREE.MeshStandardMaterial;
+    if (this.granite) {
+      // dalles de 60 cm : la texture en contient 5 × 5
+      this.granite.repeat.set(W / 3, D / 3);
+      tile = new THREE.MeshStandardMaterial({ map: this.granite, roughness: 0.62, metalness: 0.0, envMapIntensity: 0.6 });
+    } else tile = new THREE.MeshStandardMaterial({ map: this.tileTexture(W, D), roughness: 0.9 });
     const floor = this.mesh(new THREE.PlaneGeometry(W, D), tile, 0, 0.001, D / 2, false);
     floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; root.add(floor);
     // façade + porte-fenêtre
@@ -480,6 +580,8 @@ export class BalconyScene {
     for (const f of [[dw, 0.05, doorX, dh - 0.025], [dw, 0.04, doorX, 0.02]]) root.add(this.mesh(box(f[0], f[1], 0.06), MAT.frame, f[2], f[3], -0.07));
     for (const x of [doorX - dw / 2 + 0.025, doorX, doorX + dw / 2 - 0.025]) root.add(this.mesh(box(0.05, dh, 0.06), MAT.frame, x, dh / 2, -0.07));
     if (S.kind === "loggia") for (const s of [-1, 1]) root.add(this.mesh(box(0.2, wallH, D), MAT.wall, s * (W / 2 + 0.1), wallH / 2, D / 2));
+    // rue et façade haussmannienne d'en face
+    this.buildStreet(W, D, S.floor);
     // garde-corps
     const fr = this.buildRailing(W, true); fr.position.set(-W / 2, 0, zr); root.add(fr);
     if (S.kind === "ouvert") {
@@ -536,6 +638,7 @@ export class BalconyScene {
       this.addCote(k, new THREE.Vector3(W / 2 - 0.3, H + 0.04, zr - v / 2), new THREE.Vector3(W / 2 - 0.3, H + 0.04, zr + v / 2), S.rail === "vitre" ? `verre ${fmt(v * 1000)} mm` : `ép. ${cm(v)}`, S.rail === "vitre" ? "Épaisseur du verre" : "Épaisseur du panneau", Yt, new THREE.Vector3(0, 0.08, 0));
     }
     this.labelBuf = new Float32Array(this.cotes.length * 3);
+    this.dirty = true;
     this.opts.onCotesChange(this.cotes);
   }
 
@@ -560,12 +663,16 @@ export class BalconyScene {
       this.camera.position.lerpVectors(this.camAnim.p0, this.camAnim.p1, e);
       this.controls.target.lerpVectors(this.camAnim.t0, this.camAnim.t1, e);
       if (k === 1) this.camAnim = null;
+      this.dirty = true;
     }
+    if (this.controls.update()) this.dirty = true; // amortissement en cours
+    if (!this.dirty) return; // rendu à la demande : rien ne bouge, rien ne se recalcule
+    this.dirty = false;
     const behind = this.camera.position.z < 0.02, op = behind ? 0.18 : 1;
     const wall = this.MAT.wall;
     if (wall.opacity !== op) { wall.transparent = behind; wall.opacity = op; wall.depthWrite = !behind; wall.needsUpdate = true; }
-    this.controls.update();
-    this.renderer.render(this.scene, this.camera);
+    if (this.composer) this.composer.render();
+    else this.renderer.render(this.scene, this.camera);
     this.updateLabels();
   };
   private updateLabels() {
